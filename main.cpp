@@ -21,7 +21,6 @@ vector<string> split(string str, char delimiter) {
 }
 
 int main() {
-//    string input = "kak zhe ya | pwd | infu )) ";
     char WORKING = 1;
     while(WORKING == 1){
         gid_t gid = getgid();
@@ -29,8 +28,9 @@ int main() {
             cout << "!";
         else
             cout << ">";
+
         string input;
-        cin >> input;
+        getline(cin, input);
         vector<string> components = split(input, '|');
         for(int i = 0; i < components.size(); i++){
             vector<string> words = split(components[i], ' ');
@@ -38,10 +38,8 @@ int main() {
             if(command == "cd"){
                 if(words.size() > 2){}
                 else{
-                    cout << "KEK" << endl;
-//                  cout << words[1] << endl;
-//                  chdir(words[1].c_str());
-
+                  int err = chdir(words[1].c_str());
+//                  cout << "error = " << err << endl;
                 }
             }
             else if(command == "pwd"){
