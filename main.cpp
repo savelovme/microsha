@@ -4,6 +4,7 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 
 using namespace std;
 
@@ -21,6 +22,7 @@ vector<string> split(string str, char delimiter) {
 }
 
 int main() {
+
     char WORKING = 1;
     while(WORKING == 1){
         gid_t gid = getgid();
@@ -34,25 +36,40 @@ int main() {
         vector<string> components = split(input, '|');
         for(int i = 0; i < components.size(); i++){
             vector<string> words = split(components[i], ' ');
-            string command = words[0];
-            if(command == "cd"){
-                if(words.size() > 2){}
-                else{
-                  int err = chdir(words[1].c_str());
-//                  cout << "error = " << err << endl;
-                }
-            }
-            else if(command == "pwd"){
-                if(words.size() > 1){}
-                else{
-                    char wd[1000];
-                    getcwd(wd, sizeof(wd));
-                    cout << wd << endl;
-                }
-            }
-            else if(command == "time"){}
-            else{
+            vector<char *> args;
+            for(int i = 0; i < words.size(); i++)
+                args.push_back((char *)words[i].c_str());
+            string command = args[0];
 
+            pid_t pid = fork();
+            if(pid == -1){}
+            else if(pid == 0){
+                if(command == "cd"){
+                    if(words.size() > 2){}
+                    else{
+                      int err = chdir(args[1]);
+    //                  cout << "error = " << err << endl;
+                    }
+                }
+                else if(command == "pwd"){
+                    if(words.size() > 1){}
+                    else{
+                        char wd[1000];
+                        getcwd(wd, sizeof(wd));
+                        cout << wd << endl;
+                    }
+                }
+                else if(command == "time"){}
+                else{
+//                    cout << words[0] << endl;
+                    args.push_back(NULL);
+                    execvp(command/*= args[0]*/, &args[0]);
+                }
+
+            }
+            else{
+                int code;
+                wait(&code);
             }
         }
 
