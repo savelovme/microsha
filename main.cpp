@@ -25,9 +25,8 @@ vector<string> split(string str, char delimiter) {
 }
 
 int main() {
-
-    char WORKING = 1;
-    while(WORKING == 1){
+    
+    while(!feof(stdin)){
         struct passwd *pw = getpwuid(getuid());
         const char *homedir;
         if ((homedir = getenv("HOME")) == NULL) {
