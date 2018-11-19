@@ -7,9 +7,11 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/times.h>
 #include <errno.h>
 #include <pwd.h>
 #include <glob.h>
+
 
 using namespace std;
 
@@ -27,7 +29,6 @@ vector<string> split(string str, char delimiter) {
 }
 
 string get_homedir(){
-//    struct passwd *pw = getpwuid(getuid());
     const char *homedir;
     if ((homedir = getenv("HOME")) == NULL) {
         homedir = getpwuid(getuid())->pw_dir;
@@ -79,7 +80,7 @@ void command(vector<string> words){
         args.push_back((char *)_words[i].c_str());
     }
 
-    if(args[0] == "pwd"){
+    if(args.front() == "pwd"){
         if(words.size() > 1){}
         else{
             char wd[1000];
@@ -94,7 +95,7 @@ void command(vector<string> words){
     }
 }
 
-void conv(vector<string> components, int fout){
+void conv(vector<string> components, int fout, char is_time){
 
     vector<string> words = split(components.front(), ' ');
     components.erase(components.begin());
@@ -113,9 +114,24 @@ void conv(vector<string> components, int fout){
             command(words);
         }
         else{
+            tms st_cpu;
+            tms en_cpu;
+            clock_t st_time;
+            clock_t en_time;
+            if(is_time)
+                st_time = times(&st_cpu);
+
             int status;
             wait(&status);
             dup2(oldstdout, 1);
+
+            if(is_time){
+                en_time = times(&en_cpu);
+                cout << endl;
+                cout << "real" << '\t' << (float)(en_time-st_time)/sysconf(_SC_CLK_TCK) << " s" << endl;
+                cout << "user" << '\t' << (float)(en_cpu.tms_cutime - st_cpu.tms_cutime)/sysconf(_SC_CLK_TCK) << " s" << endl;
+                cout << "sys" << '\t' << (float)(en_cpu.tms_cstime - st_cpu.tms_cstime)/sysconf(_SC_CLK_TCK) << " s" << endl;
+            }
         }
 
     }
@@ -142,34 +158,15 @@ void conv(vector<string> components, int fout){
 
             int status;
             wait(&status);
-//            dup2(oldstdin, 0);
             dup2(oldstdout, 1);
 
             close(oldstdout);
-            conv(components, fout);
+            conv(components, fout, 0);
             dup2(oldstdin, 0);
             close(oldstdin);
+
         }
     }
-}
-
-int find_el(vector<string> V, string el){
-    int res = -1;
-    if(el == "<")
-        for(int i = 0; i < V.size(); i++){
-            if(V[i] == "<" && i > 0){
-                res = i;
-                break;
-            }
-        }
-    else if(el == ">")
-        for(int i = V.size()-1; i >= 0; i--){
-            if(V[i] == ">" && i < V.size()-1){
-                res = i;
-                break;
-            }
-        }
-    return res;
 }
 
 int main() {
@@ -182,40 +179,53 @@ int main() {
         getline(cin, input);
         vector<string> components = split(input, '|');
 
-        int fin = 0;
-        int oldstdin = dup(0);
-        string _begin;
+        char is_time = 0;
         vector<string> begin = split(components.front(), ' ');
-        int ind_beg = find_el(begin, "<");
-        if(ind_beg != -1){
-            for(int i = 0; i < begin.size(); i++)
-                if(i != ind_beg-1 && i != ind_beg)
-                    _begin = _begin + begin[i] + ' ';
-            components[0] = _begin;
-            fin = open(begin[ind_beg-1].c_str(), O_RDONLY);
-            dup2(fin,0);
+        if(begin[0] == "time"){
+            is_time = 1;
+            begin.erase(begin.begin());
         }
 
+
+        int fin = 0;
+        int oldstdin = dup(0);
+
+        if(begin.size() > 2)
+            if(begin[1] == "<"){
+                fin = open(begin.front().c_str(), O_RDONLY);
+                dup2(fin,0);
+                begin.erase(begin.begin());
+                begin.erase(begin.begin());
+            }
+        string _begin;
+        for(int i = 0; i < begin.size(); i++)
+            _begin = _begin + begin[i] + ' ';
+        components[components.size()-1] = _begin;
+
         int fout = 1;
-        string _end;
         vector<string> end = split(components.back(), ' ');
-        int ind_end = find_el(end, ">");
-        if(ind_end != -1){
-            for(int i = 0; i < begin.size(); i++)
-                if(i != ind_end && i != ind_end+1)
+
+        if(end.size() > 2)
+            if(end[end.size()-2] == ">"){
+                fout = open(end.back().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                end.pop_back();
+                end.pop_back();
+                string _end;
+                for(int i = 0; i < end.size(); i++)
                     _end = _end + end[i] + ' ';
-            components[components.size()-1] = _end;
-            fout = open(end[ind_end+1].c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        }
+                components[components.size()-1] = _end;
+            }
+
 
 
         if(components.size() > 1){
-            conv(components, fout);
+            conv(components, fout, 0);
 //            continue;
         }
         else if(components.size() == 1){
-            vector<string> words = split(components[0], ' ');
-            if(words[0] == "cd"){
+            vector<string> words = split(components.front(), ' ');
+
+            if(words.front() == "cd"){
                 if(words.size() > 2){
                     cout << "cd: too many arguments" << endl;
                 }
@@ -233,7 +243,7 @@ int main() {
                 }
             }
             else{
-                conv(components,fout);
+                conv(components,fout, is_time);
             }
         }
         if(fin != 1){
@@ -242,6 +252,8 @@ int main() {
         }
         if(fout != 1)
             close(fout);
+
+
     }
 
     return 0;
