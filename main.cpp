@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <pwd.h>
+#include <glob.h>
 
 using namespace std;
 
@@ -61,10 +62,23 @@ void hello(){
 
 void command(vector<string> words){
 
-    vector<char *> args;
-    for(int i = 0; i < words.size(); i++)    {
-        args.push_back((char *)words[i].c_str());
+    vector<string> _words;
+    for(int i = 0; i < words.size(); i++){
+        glob_t globbuf;
+        globbuf.gl_offs = 2;
+        int err = glob(words[i].c_str(), GLOB_NOMAGIC, NULL, &globbuf);
+        if(err != 0)
+            perror("glob_error");
+        for(int j = 0; j < globbuf.gl_pathc; j++){
+            _words.push_back(globbuf.gl_pathv[j]);
+        }
+        globfree(&globbuf);
     }
+    vector<char *> args;
+    for(int i = 0; i < _words.size(); i++){
+        args.push_back((char *)_words[i].c_str());
+    }
+
     if(args[0] == "pwd"){
         if(words.size() > 1){}
         else{
