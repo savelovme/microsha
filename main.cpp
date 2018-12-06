@@ -11,7 +11,7 @@
 #include <errno.h>
 #include <pwd.h>
 #include <glob.h>
-
+#include <signal.h>
 
 using namespace std;
 
@@ -110,6 +110,7 @@ void conv(vector<string> components, int fout, char is_time){
             perror("fork failed");
         }
         if(pid == 0){
+            signal(2, SIG_DFL);
             dup2(fout,1);
             command(words);
         }
@@ -147,6 +148,7 @@ void conv(vector<string> components, int fout, char is_time){
             perror("fork failed");
         }
         if(pid == 0){
+            signal(2, SIG_DFL);
             close(fd[0]);   //sends
             dup2(fd[1],1);
 
@@ -156,11 +158,11 @@ void conv(vector<string> components, int fout, char is_time){
             close(fd[1]); //receives
             dup2(fd[0],0);
 
-            int status;
-            wait(&status);
+//            int status;
+//            wait(&status);
             dup2(oldstdout, 1);
-
             close(oldstdout);
+
             conv(components, fout, 0);
             dup2(oldstdin, 0);
             close(oldstdin);
@@ -170,13 +172,16 @@ void conv(vector<string> components, int fout, char is_time){
 }
 
 int main() {
-
+    signal(2,SIG_IGN);
     while(!feof(stdin)){
 
         hello();
 
         string input;
         getline(cin, input);
+        if (input.empty())
+                continue;
+
         vector<string> components = split(input, '|');
 
         char is_time = 0;
@@ -191,11 +196,11 @@ int main() {
         int oldstdin = dup(0);
 
         if(begin.size() > 2)
-            if(begin[1] == "<"){
-                fin = open(begin.front().c_str(), O_RDONLY);
+            if(begin[begin.size()-2] == "<"){
+                fin = open(begin.back().c_str(), O_RDONLY);
                 dup2(fin,0);
-                begin.erase(begin.begin());
-                begin.erase(begin.begin());
+                begin.pop_back();
+                begin.pop_back();
             }
         string _begin;
         for(int i = 0; i < begin.size(); i++)
@@ -246,7 +251,7 @@ int main() {
                 conv(components,fout, is_time);
             }
         }
-        if(fin != 1){
+        if(fin != 0){
             close(fin);
             dup2(oldstdin,0);
         }
@@ -256,5 +261,6 @@ int main() {
 
     }
 
+    cout << endl;
     return 0;
 }
