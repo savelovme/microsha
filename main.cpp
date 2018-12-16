@@ -43,7 +43,6 @@ void hello(){
     string dir = wd;
     string hello;
 
-    hello;
     if(dir > get_homedir()){
         hello += ("~/" + split(wd, '/').back());
     }
@@ -68,8 +67,10 @@ void command(vector<string> words){
         glob_t globbuf;
         globbuf.gl_offs = 2;
         int err = glob(words[i].c_str(), GLOB_NOMAGIC, NULL, &globbuf);
-        if(err != 0)
+        if(err != 0){
             perror("glob_error");
+            exit(0);
+        }
         for(int j = 0; j < globbuf.gl_pathc; j++){
             _words.push_back(globbuf.gl_pathv[j]);
         }
@@ -80,7 +81,7 @@ void command(vector<string> words){
         args.push_back((char *)_words[i].c_str());
     }
 
-    if(args.front() == "pwd"){
+    if(_words.front() == "pwd"){
         if(words.size() > 1){}
         else{
             char wd[1000];
@@ -95,46 +96,14 @@ void command(vector<string> words){
     }
 }
 
-void conv(vector<string> components, int fout, char is_time){
+void _conv(vector<vector<string>> components){
 
-    vector<string> words = split(components.front(), ' ');
+    vector<string> words = components.front();
     components.erase(components.begin());
 
-    int oldstdin = dup(0);
-    int oldstdout = dup(1);
-
     if(components.empty()){
-
-        pid_t pid = fork();
-        if(pid == -1){
-            perror("fork failed");
-        }
-        if(pid == 0){
-            signal(2, SIG_DFL);
-            dup2(fout,1);
-            command(words);
-        }
-        else{
-            tms st_cpu;
-            tms en_cpu;
-            clock_t st_time;
-            clock_t en_time;
-            if(is_time)
-                st_time = times(&st_cpu);
-
-            int status;
-            wait(&status);
-            dup2(oldstdout, 1);
-
-            if(is_time){
-                en_time = times(&en_cpu);
-                cout << endl;
-                cout << "real" << '\t' << (float)(en_time-st_time)/sysconf(_SC_CLK_TCK) << " s" << endl;
-                cout << "user" << '\t' << (float)(en_cpu.tms_cutime - st_cpu.tms_cutime)/sysconf(_SC_CLK_TCK) << " s" << endl;
-                cout << "sys" << '\t' << (float)(en_cpu.tms_cstime - st_cpu.tms_cstime)/sysconf(_SC_CLK_TCK) << " s" << endl;
-            }
-        }
-
+        command(words);
+        exit(0);
     }
     else{
         int fd[2];
@@ -148,30 +117,120 @@ void conv(vector<string> components, int fout, char is_time){
             perror("fork failed");
         }
         if(pid == 0){
-            signal(2, SIG_DFL);
             close(fd[0]);   //sends
             dup2(fd[1],1);
 
             command(words);
+            exit(0);
         }
         else{
             close(fd[1]); //receives
             dup2(fd[0],0);
 
-//            int status;
-//            wait(&status);
-            dup2(oldstdout, 1);
-            close(oldstdout);
+            _conv(components);
 
-            conv(components, fout, 0);
-            dup2(oldstdin, 0);
-            close(oldstdin);
-
+            int status;
+            wait(&status);
         }
     }
 }
 
-int main() {
+void EXEC(vector<vector<string>> components, string in, string out, char is_time){
+
+    if(components.empty())
+        return;
+
+    if(is_time){
+
+        pid_t pid = fork();
+        if(pid < 0)
+            perror("fork error");
+        else if(pid == 0){
+            if(!in.empty()){
+                close(0);
+                if(open(in.c_str(), O_RDONLY) < 0){
+                    perror("open error");
+                    exit(0);
+                }
+            }
+            if(!out.empty()){
+                close(1);
+               if(open(out.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666) < 0){
+                   perror("open error");
+                   exit(0);
+               }
+            }
+            signal(2, SIG_DFL);
+            _conv(components);
+            exit(0);
+        }
+        else{
+
+            tms st_cpu;
+            tms en_cpu;
+            clock_t st_time;
+            clock_t en_time;
+            st_time = times(&st_cpu);
+
+            int status;
+            wait(&status);
+
+            en_time = times(&en_cpu);
+            cout << endl;
+            cout << "real" << '\t' << (float)(en_time-st_time)/sysconf(_SC_CLK_TCK) << " s" << endl;
+            cout << "user" << '\t' << (float)(en_cpu.tms_cutime - st_cpu.tms_cutime)/sysconf(_SC_CLK_TCK) << " s" << endl;
+            cout << "sys" << '\t' << (float)(en_cpu.tms_cstime - st_cpu.tms_cstime)/sysconf(_SC_CLK_TCK) << " s" << endl;
+
+        }
+
+    }
+    else if(components.size() == 1 && components.front().front() == "cd"){
+        vector<string> words = components.front();
+        if(words.size() > 2){
+            cout << "cd: too many arguments" << endl;
+        }
+        else if(words.size() == 1){
+            int err = chdir(get_homedir().c_str());
+            if(err < 0){
+                perror("cd");
+            }
+        }
+        else {
+            int err = chdir((words.back()).c_str());
+            if(err < 0){
+                perror("cd");
+            }
+        }
+    }
+    else{
+        pid_t pid = fork();
+        if(pid < 0)
+            perror("fork error");
+        else if(pid == 0){
+            if(!in.empty()){
+                close(0);
+                if(open(in.c_str(), O_RDONLY) < 0){
+                    perror("open error");
+                    exit(0);
+                }
+            }
+            if(!out.empty()){
+                close(1);
+               if(open(out.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666) < 0){
+                   perror("open error");
+                   exit(0);
+               }
+            }
+            signal(2, SIG_DFL);
+            _conv(components);
+            exit(0);
+        }
+        else
+            wait(NULL);
+    }
+}
+
+int main(){
     signal(2,SIG_IGN);
     while(!feof(stdin)){
 
@@ -181,86 +240,45 @@ int main() {
         getline(cin, input);
         if (input.empty())
                 continue;
+        if(input.find('>') != input.rfind('>')){
+            cout << "There could be only one '>'" << endl;;
+            continue;
+        }
 
-        vector<string> components = split(input, '|');
+        if(input.find('<') != input.rfind('<')){
+            cout << "There could be only one '<'" << endl;
+            continue;
+        }
+
+        vector<string> _comps = split(input, '|');
+        input.clear();
+
+        vector<vector<string>> components;
+        for(int i = 0; i < _comps.size(); i++)
+            components.push_back(split(_comps[i], ' '));
+        _comps.clear();
 
         char is_time = 0;
-        vector<string> begin = split(components.front(), ' ');
-        if(begin[0] == "time"){
+        if(components.front().front() == "time"){
             is_time = 1;
-            begin.erase(begin.begin());
+            components[0].erase(components.front().begin());
         }
 
-
-        int fin = 0;
-        int oldstdin = dup(0);
-
-        if(begin.size() > 2)
-            if(begin[begin.size()-2] == "<"){
-                fin = open(begin.back().c_str(), O_RDONLY);
-                dup2(fin,0);
-                begin.pop_back();
-                begin.pop_back();
+        string in, out;
+        if(components.back().size() > 2)
+            if(components.back()[components.back().size()-2] == ">"){
+              out = components.back().back();
+              components.back().pop_back();
+              components.back().pop_back();
             }
-        string _begin;
-        for(int i = 0; i < begin.size(); i++)
-            _begin = _begin + begin[i] + ' ';
-        components[components.size()-1] = _begin;
-
-        int fout = 1;
-        vector<string> end = split(components.back(), ' ');
-
-        if(end.size() > 2)
-            if(end[end.size()-2] == ">"){
-                fout = open(end.back().c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-                end.pop_back();
-                end.pop_back();
-                string _end;
-                for(int i = 0; i < end.size(); i++)
-                    _end = _end + end[i] + ' ';
-                components[components.size()-1] = _end;
+        if(components.front().size() > 2)
+            if(components.front()[components.front().size()-2] == "<"){
+                in = components.front().back();
+                components.front().pop_back();
+                components.front().pop_back();
             }
 
-
-
-        if(components.size() > 1){
-            conv(components, fout, 0);
-//            continue;
-        }
-        else if(components.size() == 1){
-            vector<string> words = split(components.front(), ' ');
-
-            if(words.front() == "cd"){
-                if(words.size() > 2){
-                    cout << "cd: too many arguments" << endl;
-                }
-                else if(words.size() == 1){
-                    int err = chdir(get_homedir().c_str());
-                    if(err == -1){
-                        perror("cd");
-                    }
-                }
-                else {
-                    int err = chdir((words.back()).c_str());
-                    if(err == -1){
-                        perror("cd");
-                    }
-                }
-            }
-            else{
-                conv(components,fout, is_time);
-            }
-        }
-        if(fin != 0){
-            close(fin);
-            dup2(oldstdin,0);
-        }
-        if(fout != 1)
-            close(fout);
-
-
+        EXEC(components, in, out, is_time);
     }
-
-    cout << endl;
     return 0;
 }
